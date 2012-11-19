@@ -42,14 +42,11 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 	interface.xbee_status();
-	speed_measurement(&interface, 100, 1);
-	//XBee_Message test_msg = get_message(5500);
-	//debug_me();
-	//interface.xbee_send_to_coordinator(test_msg);
-	
+	//speed_measurement(&interface, 1024, 10);
+
 	XBee_Message *rcv_msg = NULL;
 	uint16_t length = 0;
-	uint8_t *payload;
+	//uint8_t *payload;
 	while (true) {
 		if (interface.xbee_bytes_available()) {
 			rcv_msg = interface.xbee_receive_message();
@@ -58,41 +55,13 @@ int main(int argc, char **argv) {
 				printf("%s msg received. Type: %u, length: %u\n",
 				rcv_msg->is_complete() ? "complete" : "incomplete",
 				rcv_msg->get_type(), length);
-				payload = rcv_msg->get_payload(&length);
-				printf("content: %s\n", hex_str(payload, length));
+				//payload = rcv_msg->get_payload(&length);
+				//printf("content: %s\n", hex_str(payload, length));
 			}
 			delete rcv_msg;
 		}
+		usleep(200);
 	}
-	/* print some information about the current network status */
-	/*
-	XBee_At_Command cmd("MY");
-	interface.xbee_at_command(cmd);
-	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-
-	cmd = XBee_At_Command("ID");
-	interface.xbee_at_command(cmd);
-	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-
-	cmd = XBee_At_Command("NI");
-	interface.xbee_at_command(cmd);
-	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-
-	cmd = XBee_At_Command("NP");
-	interface.xbee_at_command(cmd);
-	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-
-	cmd = XBee_At_Command("SH");
-	interface.xbee_at_command(cmd);
-	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-	cmd = XBee_At_Command("SL");
-	interface.xbee_at_command(cmd);
-	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-
-	const XBee_Address *addr = interface.xbee_get_address("coordinator");
-	printf("Address of %s: 16bit: %04x, 64bith: %08x, 64bitl: %08x\n", addr->node.c_str(), 
-	addr->addr16, addr->addr64h, addr->addr64l);
-	*/
 	return 0;
 }
 

@@ -673,24 +673,19 @@ int XBee::xbee_bytes_available() {
 uint8_t XBee::xbee_send(XBee_Message& msg, uint16_t addr16, uint32_t addr64h, uint32_t addr64l) {
 	GBeeFrameData frame;
 	GBeeError error_code;
+	static const uint8_t bcast_radius = 0;	/* -> max hops for bcast transmission */
+	static const uint8_t frame_id = 0;	/* -> 0 disables TxAcknowledge frames */
 	uint8_t options = 0x00;	/* 0x01 = Disable ACK, 0x20 - Enable APS
 				 * encryption (if EE=1), 0x04 = Send packet
 				 * with Broadcast Pan ID.
 				 * All other bits must be set to 0. */
 	uint8_t tx_status = 0xFF;	/* -> Unknown Tx Status */
-	uint8_t bcast_radius = 0;	/* -> max hops for bcast transmission */
-	uint16_t length;
-	/* coordinator can be addressed by setting the 64bit destination
-	 * address to all zeros and the 16bit address to 0xFFFE */
-	uint32_t timeout = config.timeout;
-	static uint8_t frame_id;;
 	memset(&frame, 0, sizeof(frame));
 
 	/* send the message, by splitting it up into parts that have the 
 	 * correct length for transmission over ZigBee */
 	for (uint16_t i = 1; i <= msg.message_part_cnt; i++) {
 		/* send out one part of the message */
-		frame_id = (frame_id % 255) + 1;	/* give each frame a unique ID */
 		error_code = gbeeSendTxRequest(gbee_handle, frame_id, addr64h, addr64l,
 		addr16, bcast_radius, options, msg.get_msg(i), msg.get_msg_len(i));
 		if (error_code != GBEE_NO_ERROR) {
@@ -699,27 +694,6 @@ uint8_t XBee::xbee_send(XBee_Message& msg, uint16_t addr16, uint32_t addr64h, ui
 			tx_status = 0xFF;	/* -> Unknown Tx Status */
 			break;
 		}
-		
-		/* check the transmission status of message part*/
-		uint8_t retry_cnt = 3;
-		while (--retry_cnt > 0) {
-			error_code = gbeeReceive(gbee_handle, &frame, &length, &timeout);
-			if (error_code != GBEE_NO_ERROR) {
-				printf("Error receiving transmission status, status message: error= %s\n",
-				gbeeUtilCodeToString(error_code));
-				tx_status = 0xFF;	/* -> Unknown Tx Status */
-				usleep(50000);
-			/* check if the received frame is a TxStatus frame */
-			} else if (frame.ident == GBEE_TX_STATUS_NEW) {
-				GBeeTxStatusNew *tx_frame = (GBeeTxStatusNew*) &frame;
-				tx_status = tx_frame->deliveryStatus;
-				if (tx_status != 0x00)	/* 0x00 = success */
-					continue;
-				break; 
-			}
-		}
-		if (retry_cnt == 0)
-			break;
 	}
 
 	return tx_status;
