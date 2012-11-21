@@ -25,7 +25,6 @@
 
 const char* hex_str(uint8_t *data, uint8_t length);
 XBee_Message get_message(uint16_t size);
-void debug_me(void);
 void speed_measurement(XBee* interface, uint16_t size, uint8_t iterations);
 
 int main(int argc, char **argv) {
@@ -33,7 +32,7 @@ int main(int argc, char **argv) {
 	uint8_t unique_id = 2;
 	uint8_t error_code;
 	XBee_Config config("/dev/ttyUSB0", "denver", false, unique_id, pan_id, 500,
-	B115200);
+	B115200, 1);
 	
 	XBee interface(config);
 	error_code = interface.xbee_init();
@@ -42,11 +41,9 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 	interface.xbee_status();
-	speed_measurement(&interface, 100, 1);
-	//XBee_Message test_msg = get_message(5500);
-	//debug_me();
-	//interface.xbee_send_to_coordinator(test_msg);
+	speed_measurement(&interface, 300, 20);
 	
+	/*
 	XBee_Message *rcv_msg = NULL;
 	uint16_t length = 0;
 	uint8_t *payload;
@@ -64,35 +61,18 @@ int main(int argc, char **argv) {
 			delete rcv_msg;
 		}
 	}
+	*/
 	/* print some information about the current network status */
-	/*
 	XBee_At_Command cmd("MY");
-	interface.xbee_at_command(cmd);
+	interface.xbee_send_at_command(cmd);
 	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-
-	cmd = XBee_At_Command("ID");
-	interface.xbee_at_command(cmd);
-	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-
-	cmd = XBee_At_Command("NI");
-	interface.xbee_at_command(cmd);
-	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-
-	cmd = XBee_At_Command("NP");
-	interface.xbee_at_command(cmd);
-	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-
 	cmd = XBee_At_Command("SH");
-	interface.xbee_at_command(cmd);
+	interface.xbee_send_at_command(cmd);
 	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
 	cmd = XBee_At_Command("SL");
-	interface.xbee_at_command(cmd);
+	interface.xbee_send_at_command(cmd);
 	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
-
-	const XBee_Address *addr = interface.xbee_get_address("coordinator");
-	printf("Address of %s: 16bit: %04x, 64bith: %08x, 64bitl: %08x\n", addr->node.c_str(), 
-	addr->addr16, addr->addr64h, addr->addr64l);
-	*/
+	
 	return 0;
 }
 
@@ -113,18 +93,6 @@ XBee_Message get_message(uint16_t size) {
 	delete[] payload;
 
 	return test_msg; 
-}
-
-void debug_me(void) {
-	XBee_Message assign_msg;
-	uint8_t *payload;
-	uint16_t length = 0;
-	
-	for (int i = 0; i < 2048; i++) {
-			printf("Msg size: %i\n", i);
-			XBee_Message test_msg = get_message(i);
-			assign_msg = test_msg;
-		}
 }
 
 void speed_measurement(XBee* interface, uint16_t size, uint8_t iterations) {

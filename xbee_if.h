@@ -55,6 +55,8 @@ class XBee_Message;
 class XBee_Address {
 public:
 	XBee_Address();
+	XBee_Address(const std::string &node, uint16_t addr16, uint32_t addr64h, uint32_t addr64l);
+	XBee_Address(const GBeeRxPacket *rx);
 	XBee_Address(const std::string &node, const uint8_t *payload);
 
 	std::string node;
@@ -67,7 +69,7 @@ class XBee_Config {
 public:
 	XBee_Config(const std::string &port, const std::string &node, bool mode, 
 		uint8_t unique_id, const uint8_t *pan, uint32_t timeout, 
-		enum xbee_baud_rate baud);
+		enum xbee_baud_rate baud, uint8_t max_unicast_hops);
 
 	const std::string serial_port;
 	const std::string node;
@@ -76,6 +78,7 @@ public:
 	uint8_t pan_id[8];
 	const uint32_t timeout;
 	const enum xbee_baud_rate baud;
+	const uint8_t max_unicast_hops;
 };
 
 class XBee_At_Command {
@@ -114,9 +117,10 @@ public:
 private:
 	XBee(const XBee&);
 	XBee& operator=(const XBee&);
-	uint8_t xbee_send(XBee_Message& msg, uint16_t addr16, uint32_t addr64h, uint32_t addr64l);
+	uint8_t xbee_send(XBee_Message& msg, const XBee_Address *addr);
+	uint8_t xbee_send_ackn(const XBee_Address *addr);
+	uint8_t xbee_receive_acknowledge();
 	uint8_t xbee_configure_device();
-	GBeeFrameData& xbee_receive_and_print(uint16_t *length);
 	uint8_t* at_cmd_str(const std::string at_cmd_str);
 	
 	XBee_Config config;
