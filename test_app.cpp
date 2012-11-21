@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
 	uint8_t unique_id = 2;
 	uint8_t error_code;
 	XBee_Config config("/dev/ttyUSB0", "denver", false, unique_id, pan_id, 500,
-	B115200);
+	B115200, 1);
 	
 	XBee interface(config);
 	error_code = interface.xbee_init();
@@ -42,11 +42,14 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 	interface.xbee_status();
-	//speed_measurement(&interface, 1024, 10);
+
+	speed_measurement(&interface, 400, 10);
 
 	XBee_Message *rcv_msg = NULL;
 	uint16_t length = 0;
 	//uint8_t *payload;
+	
+	/*
 	while (true) {
 		if (interface.xbee_bytes_available()) {
 			rcv_msg = interface.xbee_receive_message();
@@ -62,6 +65,17 @@ int main(int argc, char **argv) {
 		}
 		usleep(200);
 	}
+	*/
+	XBee_At_Command cmd("MY");
+	interface.xbee_send_at_command(cmd);
+	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
+	cmd = XBee_At_Command("SH");
+	interface.xbee_send_at_command(cmd);
+	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
+	cmd = XBee_At_Command("SL");
+	interface.xbee_send_at_command(cmd);
+	printf("%s: %s\n", cmd.at_command.c_str(), hex_str(cmd.data, cmd.length));
+	
 	return 0;
 }
 

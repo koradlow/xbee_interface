@@ -32,10 +32,27 @@ XBee_Address::XBee_Address() :
 	addr64l(0)
 {}
 
+/* constructor of XBee_Address */
+XBee_Address::XBee_Address(const std::string &node, uint16_t addr16, uint32_t addr64h, uint32_t addr64l) :
+	node(""),
+	addr16(addr16),
+	addr64h(addr64h),
+	addr64l(addr64l)
+{}
+
+XBee_Address::XBee_Address(const GBeeRxPacket *rx) :
+	node("")
+{
+	addr16 = 	GBEE_USHORT(rx->srcAddr16);
+	addr64h = 	GBEE_ULONG(rx->srcAddr64h);
+	addr64l = 	GBEE_ULONG(rx->srcAddr64l);
+}
+
 /* constructor that decodes the data returned as an reply to the AT "DN"
  * command by an XBee device */
 XBee_Address::XBee_Address(const std::string &node, const uint8_t *payload) :
 	node(node),
+	addr16(0),
 	addr64h(0),
 	addr64l(0)
 {
@@ -57,13 +74,14 @@ XBee_Address::XBee_Address(const std::string &node, const uint8_t *payload) :
  /* TODO: find a good way to set baud rate for xbees */ 
 XBee_Config::XBee_Config(const std::string &port, const std::string &node, bool mode, 
 			uint8_t unique_id, const uint8_t *pan, uint32_t timeout,
-			enum xbee_baud_rate baud):
+			enum xbee_baud_rate baud, uint8_t max_unicast_hops):
 		serial_port(port),
 		node(node),
 		coordinator_mode(mode),
 		unique_id(unique_id),
 		timeout(timeout),
-		baud(baud)
+		baud(baud),
+		max_unicast_hops(max_unicast_hops)
 {
 	memcpy(pan_id, pan, 8);
 }
@@ -253,8 +271,6 @@ XBee_Message& XBee_Message::operator=(const XBee_Message& msg) {
 }
 
 XBee_Message::~XBee_Message() {
-	printf("del msg - pl: %u, part: %u, part_cnt: %u, pl_addr: %x, buf_add: %x\n",
-	payload_len, message_part, message_part_cnt, (uint)payload, (uint)message_buffer);
 	if (payload)
 		delete[] payload;
 	if (message_buffer)
@@ -280,7 +296,7 @@ bool XBee_Message::is_complete() {
 bool XBee_Message::append_msg(const XBee_Message &msg) {
 	uint8_t *new_payload;
 	uint16_t new_payload_len;
-	
+
 	/* check if it's possible to append the given message */
 	if (msg.message_part != message_part+1)
 		return false;
@@ -303,12 +319,11 @@ bool XBee_Message::append_msg(const XBee_Message &msg) {
 		delete[] payload;
 	payload = new_payload;
 	payload_len += msg.payload_len;
-	message_part += 1;
-	type = msg.type;
+	this->message_part = msg.message_part;
+	this->type = msg.type;
 	
 	/* determine if the message is complete */
 	if (message_part == message_part_cnt) {
-		printf("Complete message received \n");
 		message_complete = true;
 	}
 
@@ -317,7 +332,7 @@ bool XBee_Message::append_msg(const XBee_Message &msg) {
 
 bool XBee_Message::append_msg(const uint8_t *data) {
 	XBee_Message tmp_msg(data);
-	return append_msg(tmp_msg);
+	return this->append_msg(tmp_msg);
 }
 
 /* returns a pointer to a message buffer that includes a header and a payload.
@@ -465,6 +480,20 @@ uint8_t XBee::xbee_configure_device() {
 		register_updated = true;
 	}
 
+	/* check the Maximum Unicast Hops value */
+	cmd = XBee_At_Command("NH");
+	error_code = xbee_send_at_command(cmd);
+	if (error_code != GBEE_NO_ERROR)
+		return error_code;
+	/* NH returns 1 byte, with a range of 0x00 - 0xFF. Value defines the
+	 * unicast timeout: 50*NH + 100ms */
+	if (cmd.data[0] != config.max_unicast_hops) {
+		printf("Setting Unicast Hops from %02x to %02x\n",cmd.data[0], config.max_unicast_hops);
+		XBee_At_Command cmd_nh("NH", &config.max_unicast_hops, 1);
+		xbee_send_at_command(cmd_nh);
+		register_updated = true;
+	}
+
 	/* check the Baud Rate */
 	cmd = XBee_At_Command("BD");
 	error_code = xbee_send_at_command(cmd);
@@ -478,7 +507,8 @@ uint8_t XBee::xbee_configure_device() {
 		xbee_send_at_command(cmd_bd);
 		register_updated = true;
 	}
-
+	
+	
 	if (register_updated) {
 		/* write the changes to the internal memory of the xbee module */
 		cmd = XBee_At_Command("WR");
@@ -587,8 +617,9 @@ uint8_t XBee::xbee_send_at_command(XBee_At_Command& cmd){
 uint8_t XBee::xbee_send_to_coordinator(XBee_Message& msg) {
 	/* coordinator can be addressed by setting the 64bit destination
 	 * address to all zeros and the 16bit address to 0xFFFE */
-	uint16_t addr16 = 0xFFFE;
-	return xbee_send(msg, addr16, 0,0);
+	XBee_Address addr;
+	addr.addr16 = 0xFFFE;
+	return xbee_send(msg, &addr);
 }
 
 /* sends the data in the message object to a Network Node */
@@ -596,7 +627,7 @@ uint8_t XBee::xbee_send_to_node(XBee_Message& msg, const std::string &node) {
 	const XBee_Address *addr = xbee_get_address(node);
 	if (!addr)
 		return GBEE_TIMEOUT_ERROR;	/* node couldn't be found in network */
-	return xbee_send(msg, addr->addr16, addr->addr64h, addr->addr64l);
+	return xbee_send(msg, addr);
 }
 
 /* checks the buffer for (parts of) messages, puts together a complete message
@@ -605,33 +636,37 @@ XBee_Message* XBee::xbee_receive_message() {
 	GBeeFrameData frame;
 	GBeeError error_code;
 	XBee_Message *msg = new XBee_Message;
+	XBee_Address src_addr;
 	uint16_t length = 0;
 	uint32_t timeout = config.timeout;
 	memset(&frame, 0, sizeof(frame));
 
 	/* try to receive a message, it might consist of several parts */
-	uint8_t retry_cnt = 3;
+	uint8_t retry_cnt = 10;
 	do {
-		while (--retry_cnt > 0 && !msg->is_complete()) {
-			error_code = gbeeReceive(gbee_handle, &frame, &length, &timeout);
-			if (error_code != GBEE_NO_ERROR) {
-				printf("Error receiving message: length=%d, error= %s\n",
-				length, gbeeUtilCodeToString(error_code));
-				usleep(50000);
-				continue;
-			}
-			/* check if the received frame is a RxPacket frame */
-			if (frame.ident == GBEE_RX_PACKET) {
-				GBeeRxPacket *rx_frame = (GBeeRxPacket*) &frame;
-				msg->append_msg(rx_frame->data);
-				retry_cnt = 3;
-				break;
-			}
-			else {
-				printf("Received unexpected message frame: ident=%02x\n",frame.ident);
-			}
+		error_code = gbeeReceive(gbee_handle, &frame, &length, &timeout);
+		if (error_code != GBEE_NO_ERROR) {
+			printf("Error receiving message: length=%d, error= %s\n",
+			length, gbeeUtilCodeToString(error_code));
+			usleep(50000);
+			retry_cnt--;
+			continue;
+		}
+		/* check if the received frame is a RxPacket frame */
+		if (frame.ident == GBEE_RX_PACKET) {
+			GBeeRxPacket *rx_frame = (GBeeRxPacket*) &frame;
+			src_addr = XBee_Address(rx_frame);
+			msg->append_msg(rx_frame->data);
+			retry_cnt = 10;
+		}
+		else {
+			printf("Received unexpected message frame: ident=%02x\n",frame.ident);
 		}
 	} while (!msg->is_complete() && retry_cnt > 0);
+	
+	/* if a compete message was received, acknowledge the transmission */
+	if (msg->is_complete() && msg->get_type() != ACKN )
+		xbee_send_ackn(&src_addr);
 
 	return msg;
 }
@@ -670,24 +705,24 @@ int XBee::xbee_bytes_available() {
 	return bytes_available;
 }
 
-uint8_t XBee::xbee_send(XBee_Message& msg, uint16_t addr16, uint32_t addr64h, uint32_t addr64l) {
+uint8_t XBee::xbee_send(XBee_Message& msg, const XBee_Address *addr) {
 	GBeeFrameData frame;
 	GBeeError error_code;
-	static const uint8_t bcast_radius = 0;	/* -> max hops for bcast transmission */
-	static const uint8_t frame_id = 0;	/* -> 0 disables TxAcknowledge frames */
-	uint8_t options = 0x00;	/* 0x01 = Disable ACK, 0x20 - Enable APS
+	const uint8_t bcast_radius = 0;	/* -> max hops for bcast transmission */
+	const uint8_t frame_id = 0;	/* -> 0 disables TxAcknowledge frames */
+	const uint8_t options = 0x00;	/* 0x01 = Disable ACK, 0x20 - Enable APS
 				 * encryption (if EE=1), 0x04 = Send packet
 				 * with Broadcast Pan ID.
 				 * All other bits must be set to 0. */
-	uint8_t tx_status = 0xFF;	/* -> Unknown Tx Status */
+	uint8_t tx_status = 0x00;	/* -> Tx Status: success */
 	memset(&frame, 0, sizeof(frame));
 
 	/* send the message, by splitting it up into parts that have the 
 	 * correct length for transmission over ZigBee */
 	for (uint16_t i = 1; i <= msg.message_part_cnt; i++) {
 		/* send out one part of the message */
-		error_code = gbeeSendTxRequest(gbee_handle, frame_id, addr64h, addr64l,
-		addr16, bcast_radius, options, msg.get_msg(i), msg.get_msg_len(i));
+		error_code = gbeeSendTxRequest(gbee_handle, frame_id, addr->addr64h, addr->addr64l,
+		addr->addr16, bcast_radius, options, msg.get_msg(i), msg.get_msg_len(i));
 		if (error_code != GBEE_NO_ERROR) {
 			printf("Error sending message part %u of %u: %s\n",
 			i, msg.message_part_cnt, gbeeUtilCodeToString(error_code));
@@ -695,8 +730,39 @@ uint8_t XBee::xbee_send(XBee_Message& msg, uint16_t addr16, uint32_t addr64h, ui
 			break;
 		}
 	}
+	/* wait for the confirmation from the receiver that the message
+	 * was received completely */
+	//if (xbee_bytes_available())
+	XBee_Message *ackn_msg = xbee_receive_message();
+	if (ackn_msg->is_complete() && ackn_msg->get_type() == ACKN)
+		return tx_status;
 
-	return tx_status;
+	return 0xFF;	/* -> Unknown Tx Status */
+}
+
+/* sends out a very simple acknowledge message to another node to signal that one
+ * complete XBee_Message has been received */
+uint8_t XBee::xbee_send_ackn(const XBee_Address *addr) {
+	GBeeError error_code;
+	XBee_Message ackn_msg(ACKN, NULL, 0);
+	const uint8_t bcast_radius = 0;	/* -> max hops for bcast transmission */
+	const uint8_t frame_id = 0;	/* -> 0 disables TxAcknowledge frames */
+	const uint8_t options = 0x00;	/* 0x01 = Disable ACK, 0x20 - Enable APS
+				 * encryption (if EE=1), 0x04 = Send packet
+				 * with Broadcast Pan ID.
+				 * All other bits must be set to 0. */
+	
+	printf("Sending ack to %02x, %08x, %08x\n", addr->addr16, addr->addr64h, addr->addr64l);
+	error_code = gbeeSendTxRequest(gbee_handle, frame_id, addr->addr64h, addr->addr64l,
+		addr->addr16, bcast_radius, options, ackn_msg.get_msg(1), ackn_msg.get_msg_len(1));
+
+	return error_code;
+}
+
+/* tries to receive a acknowledge message - function waits for a certain
+ * time before returning */
+uint8_t XBee::xbee_receive_acknowledge() {
+	return 0xFF;
 }
 
 /* converts a std::string into a ASCII coded byte array - the length of
