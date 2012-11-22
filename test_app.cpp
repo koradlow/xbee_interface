@@ -31,8 +31,7 @@ int main(int argc, char **argv) {
 	uint8_t pan_id[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0xAB, 0xBC, 0xCD};
 	uint8_t unique_id = 2;
 	uint8_t error_code;
-	XBee_Config config("/dev/ttyUSB0", "denver", false, unique_id, pan_id, 500,
-	B115200, 1);
+	XBee_Config config("/dev/ttyUSB0", "denver", false, pan_id, 500, B115200, 1);
 	
 	XBee interface(config);
 	error_code = interface.xbee_init();
