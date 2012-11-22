@@ -182,7 +182,7 @@ void XBee_At_Command::append_data(const uint8_t *new_data, uint8_t cmd_length, u
 /** XBee_Message Class implementation */
 /* constructor for a XBee message - used to create messages for transmission */
 // TODO: Make message part in Header 2 bytes long
-XBee_Message::XBee_Message(enum xbee_msg_type type, const uint8_t *msg_payload, uint16_t msg_length):
+XBee_Message::XBee_Message(enum MessageType type, const uint8_t *msg_payload, uint16_t msg_length):
 		type(type),
 		payload_len(msg_length),
 		message_part(1),	/* message part numbers start with 1 */
@@ -203,7 +203,7 @@ XBee_Message::XBee_Message(enum xbee_msg_type type, const uint8_t *msg_payload, 
 /* constructor for XBee_messages - used to deserialize objects after reception */
 XBee_Message::XBee_Message(const uint8_t *message):
 		message_buffer(NULL),	/* this message type will not use the buffer */
-		type(static_cast<xbee_msg_type>(message[MSG_TYPE])),
+		type(static_cast<MessageType>(message[MSG_TYPE])),
 		payload_len(message[MSG_PAYLOAD_LENGTH]),
 		message_part(message[MSG_PART]),
 		message_part_cnt(message[MSG_PART_CNT])
@@ -285,7 +285,7 @@ uint8_t* XBee_Message::get_payload(uint16_t *length) {
 	return payload;
 }
 
-enum xbee_msg_type XBee_Message::get_type() {
+enum MessageType XBee_Message::get_type() {
 	return type;
 }
 

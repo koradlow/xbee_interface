@@ -29,7 +29,6 @@ void speed_measurement(XBee* interface, uint16_t size, uint8_t iterations);
 
 int main(int argc, char **argv) {
 	uint8_t pan_id[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0xAB, 0xBC, 0xCD};
-	uint8_t unique_id = 2;
 	uint8_t error_code;
 	XBee_Config config("/dev/ttyUSB0", "denver", false, pan_id, 500, B115200, 1);
 	
@@ -88,7 +87,7 @@ XBee_Message get_message(uint16_t size) {
 	for (int i = 0; i < size; i++) {
 		payload[i] = (uint8_t)i % 255;
 	}
-	XBee_Message test_msg(TEST, payload, size);
+	XBee_Message test_msg(messageTypeHeartRate, payload, size);
 	delete[] payload;
 
 	return test_msg; 
